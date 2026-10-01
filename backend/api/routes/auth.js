@@ -1,6 +1,7 @@
 import express from "express";
 import crypto from "crypto";
 import { pool } from "../db.js";
+import { logSecurityEvent } from "../lib/securityLogger.js";
 
 const router = express.Router();
 
@@ -296,6 +297,21 @@ router.post("/login", async (req, res) => {
 			If no row matched, then the login credentials are invalid.
 		*/
 		if (rows.length === 0) {
+
+			/*
+			    Record the failed authentication attempt for ThreatLens.
+				Never log the submitted password.
+			*/
+			logSecurityEvent({
+				event_type: "LOGIN_FAILURE",
+				result: "FAILURE",
+				user_id: null,
+				email: email,
+				user_type: null,
+				source_ip: req.ip,
+				reason: "INVALID_CREDENTIALS",
+			});
+
 			return res.status(401).json({ message: "Invalid email or password" });
 		}
 
@@ -313,6 +329,19 @@ router.post("/login", async (req, res) => {
 			can treat them as logged in.
 		*/
 		attachSessionIfPresent(req, user);
+		/*
+            Record the successful authentication event for ThreatLens.
+        */
+	    logSecurityEvent({
+			event_type: "LOGIN_SUCCESS",
+			result: "SUCCESS",
+			user_id: user.userID,
+			email: user.email,
+			user_type: user.userType,
+			source_ip: req.ip,
+			reason: "AUTHENTICATED",
+		});
+
 
 		/*
 			Return the successful login response and authenticated user.
