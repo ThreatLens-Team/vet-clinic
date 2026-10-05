@@ -249,6 +249,19 @@ router.post("/register", async (req, res) => {
 		attachSessionIfPresent(req, user);
 
 		/*
+			Record the successful creation of the new Vet Clinic account.
+		*/
+		logSecurityEvent({
+			event_type: "ACCOUNT_CREATED",
+			result: "SUCCESS",
+			user_id: user.userID,
+			email: user.email,
+			user_type: user.userType,
+			source_ip: req.ip,
+			reason: "USER_REGISTERED",
+		});
+
+		/*
 			Return a success response along with the authenticated
 			user object the frontend can store/use.
 		*/
