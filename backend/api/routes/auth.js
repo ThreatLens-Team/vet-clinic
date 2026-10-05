@@ -414,6 +414,17 @@ router.post("/logout", (req, res) => {
 	}
 
 	/*
+   		Save the authenticated user's identity before destroying the session
+   		so it can be included in the logout security event.
+	*/
+
+	const logoutUser = {
+		user_id: req.session.userID ?? null,
+		email: req.session.email ?? null,
+		user_type: req.session.userType ?? null,
+	};
+
+	/*
 		Destroy the session so the server no longer recognizes this user
 		as authenticated on later requests.
 	*/
@@ -422,6 +433,18 @@ router.post("/logout", (req, res) => {
 			console.error("logout error:", err);
 			return res.status(500).json({ message: "failed to logout" });
 		}
+		/*
+			Record the successful logout after the session has been destroyed.
+		*/
+		logSecurityEvent({
+			event_type: "LOGOUT",
+			result: "SUCCESS",
+			user_id: logoutUser.user_id,
+			email: logoutUser.email,
+			user_type: logoutUser.user_type,
+			source_ip: req.ip,
+			reason: "USER_LOGOUT",
+		});
 
 		/*
 			The session was destroyed successfully, so confirm logout.
