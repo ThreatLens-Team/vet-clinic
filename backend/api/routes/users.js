@@ -2,6 +2,7 @@ import express from "express";
 import { pool } from "../db.js";
 import { requireAdmin } from "../lib/authMiddleware.js";
 import { deactivateAccount } from "../lib/accountDeactivationService.js";
+import { logSecurityEvent } from "../lib/securityLogger.js";
 
 const router = express.Router();
 
@@ -58,6 +59,21 @@ router.patch("/:userID/deactivate", requireAdmin, async (req, res) => {
 		// Let the service handle all the deactivation logic so this route stays thin
 		// That includes validation, transaction work, cancellations, and any review state updates
 		const result = await deactivateAccount({ targetUserID, actorUserID });
+
+		// Record the successful account deactivation after the
+		// deactivation service has completed successfully.
+		logSecurityEvent({
+			event_type: "ACCOUNT_DEACTIVATED",
+			result: "SUCCESS",
+			actor_user_id: req.session.userID,
+			actor_email: req.session.email ?? null,
+			actor_user_type: req.session.userType ?? null,
+			target_user_id: result.userID,
+			target_email: result.email,
+			target_user_type: result.userType,
+			source_ip: req.ip,
+			reason: "ACCOUNT_DEACTIVATED_BY_ADMIN",
+		});
 
 		res.json({
 			message: "User deactivated",
