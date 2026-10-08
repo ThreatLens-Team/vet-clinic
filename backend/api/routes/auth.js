@@ -1,6 +1,7 @@
 import express from "express";
 import crypto from "crypto";
 import { pool } from "../db.js";
+import { logSecurityEvent } from "../lib/securityLogger.js";
 
 const router = express.Router();
 
@@ -248,6 +249,19 @@ router.post("/register", async (req, res) => {
 		attachSessionIfPresent(req, user);
 
 		/*
+			Record the successful creation of the new Vet Clinic account.
+		*/
+		logSecurityEvent({
+			event_type: "ACCOUNT_CREATED",
+			result: "SUCCESS",
+			user_id: user.userID,
+			email: user.email,
+			user_type: user.userType,
+			source_ip: req.ip,
+			reason: "USER_REGISTERED",
+		});
+
+		/*
 			Return a success response along with the authenticated
 			user object the frontend can store/use.
 		*/
@@ -296,6 +310,21 @@ router.post("/login", async (req, res) => {
 			If no row matched, then the login credentials are invalid.
 		*/
 		if (rows.length === 0) {
+
+			/*
+			    Record the failed authentication attempt for ThreatLens.
+				Never log the submitted password.
+			*/
+			logSecurityEvent({
+				event_type: "LOGIN_FAILURE",
+				result: "FAILURE",
+				user_id: null,
+				email: email,
+				user_type: null,
+				source_ip: req.ip,
+				reason: "INVALID_CREDENTIALS",
+			});
+
 			return res.status(401).json({ message: "Invalid email or password" });
 		}
 
@@ -313,6 +342,19 @@ router.post("/login", async (req, res) => {
 			can treat them as logged in.
 		*/
 		attachSessionIfPresent(req, user);
+		/*
+            Record the successful authentication event for ThreatLens.
+        */
+	    logSecurityEvent({
+			event_type: "LOGIN_SUCCESS",
+			result: "SUCCESS",
+			user_id: user.userID,
+			email: user.email,
+			user_type: user.userType,
+			source_ip: req.ip,
+			reason: "AUTHENTICATED",
+		});
+
 
 		/*
 			Return the successful login response and authenticated user.
@@ -385,6 +427,17 @@ router.post("/logout", (req, res) => {
 	}
 
 	/*
+   		Save the authenticated user's identity before destroying the session
+   		so it can be included in the logout security event.
+	*/
+
+	const logoutUser = {
+		user_id: req.session.userID ?? null,
+		email: req.session.email ?? null,
+		user_type: req.session.userType ?? null,
+	};
+
+	/*
 		Destroy the session so the server no longer recognizes this user
 		as authenticated on later requests.
 	*/
@@ -393,6 +446,18 @@ router.post("/logout", (req, res) => {
 			console.error("logout error:", err);
 			return res.status(500).json({ message: "failed to logout" });
 		}
+		/*
+			Record the successful logout after the session has been destroyed.
+		*/
+		logSecurityEvent({
+			event_type: "LOGOUT",
+			result: "SUCCESS",
+			user_id: logoutUser.user_id,
+			email: logoutUser.email,
+			user_type: logoutUser.user_type,
+			source_ip: req.ip,
+			reason: "USER_LOGOUT",
+		});
 
 		/*
 			The session was destroyed successfully, so confirm logout.

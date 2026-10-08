@@ -1,6 +1,7 @@
 import express from "express";
 import { pool } from "../db.js";
 import { requireAdmin, requireStaff } from "../lib/authMiddleware.js";
+import { logSecurityEvent } from "../lib/securityLogger.js";
 
 const router = express.Router();
 
@@ -366,7 +367,7 @@ router.post("/", requireAdmin, async (req, res) => {
 			before trying to link it to a staff profile.
 		*/
 		const [userRows] = await conn.query(
-			`SELECT userID, userType, COALESCE(isDeactivated, 0) AS isDeactivated
+			`SELECT userID, email, userType, COALESCE(isDeactivated, 0) AS isDeactivated
 			 FROM customer
 			 WHERE userID = ?
 			 LIMIT 1`,
@@ -463,6 +464,27 @@ router.post("/", requireAdmin, async (req, res) => {
 
 		await conn.commit();
 
+		/*
+			Record the successful account role change after the
+			database transaction has been committed.
+		*/
+		logSecurityEvent({
+			event_type: "ROLE_CHANGE",
+			result: "SUCCESS",
+
+			actor_user_id: req.session.userID,
+			actor_email: req.session.email ?? null,
+			actor_user_type: req.session.userType ?? null,
+
+			target_user_id: userRows[0].userID,
+			target_email: userRows[0].email,
+			target_user_type: "STAFF",
+
+			previous_user_type: userRows[0].userType,
+			new_user_type: "STAFF",
+			source_ip: req.ip,
+			reason: "ROLE_UPDATED",
+		});
 		res.status(201).json({
 			message: "Staff profile created successfully.",
 			staffID: newStaffID,
